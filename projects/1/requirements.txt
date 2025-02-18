@@ -1,0 +1,12 @@
+torch>=2.0.0
+transformers>=4.30.0
+datasets>=2.12.0
+evaluate>=0.4.0
+scikit-learn>=1.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+rouge-score>=0.1.2
+accelerate>=0.20.0
+peft>=0.4.0  # For parameter efficient fine-tuning (LoRA)
+wandb>=0.15.0  # For experiment tracking
+tqdm>=4.65.0
