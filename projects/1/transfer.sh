@@ -1,0 +1,1 @@
+scp -rp ~/Sync/github/school/ECE696-310/projects/ anessaee@filexfer.hpc.arizona.edu:~/projects

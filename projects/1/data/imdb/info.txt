@@ -1,0 +1,4 @@
+name: imdb
+num_train: 25000
+num_test: 25000
+features: ['text', 'label']

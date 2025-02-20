@@ -4,50 +4,144 @@ Main script for running experiments.
 import argparse
 from pathlib import Path
 import json
+import time
+import csv
+from datetime import datetime
 
 from src.models.model_handler import ModelHandler
 from src.data.dataset import DatasetHandler
 from src.evaluation.evaluator import Evaluator
 from src.training.trainer import Trainer
 from src.utils.config import MODEL_CONFIGS, DATASET_CONFIGS
+from src.utils.logging_config import setup_logging
+
+def save_results_to_csv(results: dict, filepath: Path, metadata: dict = None):
+    """Save results dictionary to CSV format with optional metadata."""
+    # Flatten nested dictionary
+    flat_dict = {}
+    def flatten(d, parent_key=''):
+        for k, v in d.items():
+            new_key = f"{parent_key}_{k}" if parent_key else k
+            if isinstance(v, dict):
+                flatten(v, new_key)
+            else:
+                flat_dict[new_key] = v
+    
+    flatten(results)
+    if metadata:
+        flat_dict.update(metadata)
+    
+    # Write to CSV
+    with open(filepath, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=sorted(flat_dict.keys()))
+        writer.writeheader()
+        writer.writerow(flat_dict)
 
 def run_baseline_evaluation(args):
-    """Run baseline model evaluation."""
-    # Initialize handlers
-    model_handler = ModelHandler(args.model, args.dataset)
-    dataset_handler = DatasetHandler(args.dataset, model_handler.tokenizer)
-    evaluator = Evaluator(model_handler, dataset_handler)
+    """Run baseline model evaluation with logging."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    experiment_name = f"baseline_eval_{args.model}_{args.dataset}_{timestamp}"
     
-    # Run evaluation
-    results = evaluator.evaluate('test')
-    print("\nBaseline Evaluation Results:")
-    print(json.dumps(results, indent=2))
+    logger = setup_logging(experiment_name)
+    logger.info(f"Starting baseline evaluation for model={args.model}, dataset={args.dataset}")
+    
+    try:
+        # Initialize handlers
+        model_handler = ModelHandler(args.model, args.dataset)
+        dataset_handler = DatasetHandler(args.dataset, model_handler.tokenizer)
+        evaluator = Evaluator(model_handler, dataset_handler)
+        
+        # Run evaluation
+        results = evaluator.evaluate('test')
+        
+        # Add metadata
+        metadata = {
+            'timestamp': timestamp,
+            'model': args.model,
+            'dataset': args.dataset,
+            'split': 'test'
+        }
+        
+        # Log results
+        logger.info(f"Evaluation results:\n{json.dumps(results, indent=2)}")
+        print("\nBaseline Evaluation Results:")
+        print(json.dumps(results, indent=2))
+        
+        # Save results
+        save_dir = Path("results") / experiment_name
+        save_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save in both CSV and JSON formats
+        save_results_to_csv(results, save_dir / "metrics.csv", metadata)
+        with open(save_dir / "metrics.json", 'w') as f:
+            json.dump({**results, 'metadata': metadata}, f, indent=2)
+            
+        logger.info(f"Saved results to {save_dir}")
+        
+    except Exception as e:
+        logger.error(f"Evaluation failed: {str(e)}")
+        raise
 
 def run_training(args):
-    """Run model fine-tuning."""
-    # Initialize handlers
-    model_handler = ModelHandler(args.model, args.dataset)
-    dataset_handler = DatasetHandler(args.dataset, model_handler.tokenizer)
-    evaluator = Evaluator(model_handler, dataset_handler)
+    """Run model fine-tuning with enhanced logging and checkpointing."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    experiment_name = f"train_{args.model}_{args.dataset}_{timestamp}"
     
-    # Initialize trainer
-    trainer = Trainer(
-        model_handler,
-        dataset_handler,
-        evaluator,
-        use_wandb=args.use_wandb
-    )
+    logger = setup_logging(experiment_name)
+    logger.info(f"Starting training experiment: {experiment_name}")
+    logger.info(f"Args: {vars(args)}")
     
-    # Run training
-    metrics = trainer.train(
-        num_epochs=args.num_epochs,
-        learning_rate=args.learning_rate,
-        eval_steps=args.eval_steps,
-        save_steps=args.save_steps
-    )
-    
-    print("\nTraining Results:")
-    print(json.dumps(metrics, indent=2))
+    try:
+        # Initialize handlers
+        model_handler = ModelHandler(args.model, args.dataset)
+        dataset_handler = DatasetHandler(args.dataset, model_handler.tokenizer)
+        evaluator = Evaluator(model_handler, dataset_handler)
+        
+        # Initialize trainer with experiment name
+        trainer = Trainer(
+            model_handler,
+            dataset_handler,
+            evaluator,
+            use_wandb=args.use_wandb,
+            experiment_name=experiment_name
+        )
+        
+        # Run training
+        metrics = trainer.train(
+            num_epochs=args.num_epochs,
+            learning_rate=args.learning_rate,
+            eval_steps=args.eval_steps,
+            save_steps=args.save_steps
+        )
+        
+        # Add metadata
+        metadata = {
+            'timestamp': timestamp,
+            'model': args.model,
+            'dataset': args.dataset,
+            'num_epochs': args.num_epochs,
+            'learning_rate': args.learning_rate,
+            'eval_steps': args.eval_steps,
+            'save_steps': args.save_steps,
+            'use_wandb': args.use_wandb
+        }
+        
+        # Save final results
+        save_dir = Path("results") / experiment_name
+        save_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save in both CSV and JSON formats
+        save_results_to_csv(metrics, save_dir / "metrics.csv", metadata)
+        with open(save_dir / "metrics.json", 'w') as f:
+            json.dump({**metrics, 'metadata': metadata}, f, indent=2)
+        
+        logger.info(f"Training completed successfully. Results saved to {save_dir}")
+        print("\nTraining Results:")
+        print(json.dumps(metrics, indent=2))
+        
+    except Exception as e:
+        logger.error(f"Training failed: {str(e)}")
+        raise
 
 def download_data(args):
     """Download dataset and cache it."""
@@ -98,6 +192,10 @@ def download_model(args):
         raise
 
 def main():
+    # Create results and logs directories
+    for dir_name in ['results', 'logs', 'models']:
+        Path(dir_name).mkdir(exist_ok=True)
+    
     parser = argparse.ArgumentParser(description='LLM Fine-tuning Project')
     parser.add_argument('--mode', choices=['evaluate', 'train', 'download'], required=True,
                       help='Mode to run in')

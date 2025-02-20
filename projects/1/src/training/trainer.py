@@ -1,16 +1,28 @@
 """
-Model training module.
+Model training module with robust checkpointing and logging.
+
+This module handles model training, evaluation, and checkpointing with comprehensive
+logging and error handling. It supports:
+- Automatic checkpointing and model saving
+- Integration with Weights & Biases
+- Graceful error recovery
+- Detailed progress logging
 """
 from typing import Optional, Dict, Any
 import torch
 from tqdm import tqdm
 import wandb
 from pathlib import Path
+import logging
+import json
+import time
+from datetime import datetime
 
 from src.models.model_handler import ModelHandler
 from src.data.dataset import DatasetHandler
 from src.evaluation.evaluator import Evaluator
 from src.utils.config import MODELS_DIR
+from src.utils.logging_config import setup_logging
 
 class Trainer:
     """Handles model training and fine-tuning."""
@@ -20,7 +32,8 @@ class Trainer:
         model_handler: ModelHandler,
         dataset_handler: DatasetHandler,
         evaluator: Evaluator,
-        use_wandb: bool = False
+        use_wandb: bool = False,
+        experiment_name: Optional[str] = None
     ):
         """
         Initialize trainer.
@@ -31,6 +44,11 @@ class Trainer:
             evaluator: Initialized Evaluator instance
             use_wandb: Whether to use Weights & Biases for tracking
         """
+        # Setup logging
+        self.experiment_name = experiment_name or f"{model_handler.model_config['name']}_{dataset_handler.config['name']}_{int(time.time())}"
+        self.logger = setup_logging(self.experiment_name)
+        
+        # Initialize components
         self.model_handler = model_handler
         self.dataset_handler = dataset_handler
         self.evaluator = evaluator
@@ -39,39 +57,102 @@ class Trainer:
         self.device = model_handler.device
         self.model = model_handler.model
         self.task = dataset_handler.config['task']
+        
+        # Create checkpoint directory
+        self.checkpoint_dir = MODELS_DIR / self.experiment_name
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save experiment config
+        self.config = {
+            'model': model_handler.model_config['name'],
+            'dataset': dataset_handler.config['name'],
+            'task': self.task,
+            'timestamp': datetime.now().isoformat()
+        }
+        with open(self.checkpoint_dir / 'config.json', 'w') as f:
+            json.dump(self.config, f, indent=2)
+        
+        self.logger.info(f"Initialized trainer for experiment: {self.experiment_name}")
+        self.logger.info(f"Config: {json.dumps(self.config, indent=2)}")
     
     def train_epoch(
         self,
         dataloader: torch.utils.data.DataLoader,
         optimizer: torch.optim.Optimizer,
+        scheduler: Optional[torch.optim.lr_scheduler._LRScheduler],
         epoch: int
-    ) -> float:
-        """Train for one epoch."""
+    ) -> Dict[str, float]:
+        """
+        Train for one epoch with detailed logging and error handling.
+        
+        Args:
+            dataloader: Training data loader
+            optimizer: Optimizer instance
+            scheduler: Optional learning rate scheduler
+            epoch: Current epoch number
+            
+        Returns:
+            Dictionary containing training metrics for the epoch
+        """
         self.model.train()
-        total_loss = 0
+        metrics = {'loss': 0.0, 'steps': 0}
+        start_time = time.time()
         
         with tqdm(dataloader, desc=f"Training epoch {epoch}") as pbar:
             for step, batch in enumerate(pbar):
-                batch = {k: v.to(self.device) for k, v in batch.items()}
-                
-                outputs = self.model(**batch)
-                loss = outputs.loss
-                
-                loss.backward()
-                optimizer.step()
-                optimizer.zero_grad()
-                
-                total_loss += loss.item()
-                pbar.set_postfix({'loss': loss.item()})
-                
-                if self.wandb_enabled:
-                    wandb.log({
-                        'train_loss': loss.item(),
-                        'epoch': epoch,
-                        'step': step
+                try:
+                    # Move batch to device
+                    batch = {k: v.to(self.device) for k, v in batch.items()}
+                    
+                    # Forward pass
+                    outputs = self.model(**batch)
+                    loss = outputs.loss
+                    
+                    # Backward pass
+                    loss.backward()
+                    
+                    # Gradient clipping
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                    
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    
+                    if scheduler is not None:
+                        scheduler.step()
+                    
+                    # Update metrics
+                    metrics['loss'] += loss.item()
+                    metrics['steps'] += 1
+                    
+                    # Update progress bar
+                    current_lr = scheduler.get_last_lr()[0] if scheduler else optimizer.param_groups[0]['lr']
+                    pbar.set_postfix({
+                        'loss': loss.item(),
+                        'avg_loss': metrics['loss'] / metrics['steps'],
+                        'lr': current_lr
                     })
+                    
+                    # Log to wandb
+                    if self.wandb_enabled:
+                        wandb.log({
+                            'train/loss': loss.item(),
+                            'train/avg_loss': metrics['loss'] / metrics['steps'],
+                            'train/learning_rate': current_lr,
+                            'epoch': epoch,
+                            'step': step
+                        })
+                        
+                except Exception as e:
+                    self.logger.error(f"Error in training step {step}: {str(e)}")
+                    continue
         
-        return total_loss / len(dataloader)
+        # Compute epoch metrics
+        metrics['avg_loss'] = metrics['loss'] / metrics['steps']
+        metrics['time'] = time.time() - start_time
+        
+        self.logger.info(f"Epoch {epoch} completed in {metrics['time']:.2f}s with avg_loss={metrics['avg_loss']:.4f}")
+        
+        return metrics
     
     def train(
         self,
@@ -95,6 +176,16 @@ class Trainer:
         train_dataloader = self.dataset_handler.get_dataloader('train')
         optimizer = self.model_handler.get_optimizer(learning_rate)
         
+        # Setup learning rate scheduler
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=learning_rate or self.model_handler.model_config['learning_rate'],
+            epochs=num_epochs,
+            steps_per_epoch=len(train_dataloader),
+            pct_start=0.1,  # Warm up for 10% of training
+            anneal_strategy='cos'
+        )
+        
         # Initialize wandb if requested and API key is configured
         self.wandb_enabled = False
         if self.use_wandb:
@@ -111,18 +202,18 @@ class Trainer:
                     }
                 )
                 self.wandb_enabled = True
-                print("Successfully initialized Weights & Biases logging")
+                self.logger.info("Successfully initialized Weights & Biases logging")
             except Exception as e:
-                print(f"Warning: Could not initialize Weights & Biases: {str(e)}")
-                print("Training will continue without W&B logging")
+                self.logger.warning(f"Could not initialize Weights & Biases: {str(e)}")
+                self.logger.warning("Training will continue without W&B logging")
         
         best_metric = float('inf')
         metrics = {}
         
         for epoch in range(num_epochs):
             # Train for one epoch
-            train_loss = self.train_epoch(train_dataloader, optimizer, epoch)
-            metrics[f'epoch_{epoch}_train_loss'] = train_loss
+            epoch_metrics = self.train_epoch(train_dataloader, optimizer, scheduler, epoch)
+            metrics[f'epoch_{epoch}'] = epoch_metrics
             
             # Evaluate if needed
             if eval_steps and (epoch + 1) % eval_steps == 0:
@@ -134,22 +225,33 @@ class Trainer:
                     current_metric = eval_metrics.get('loss', eval_metrics.get('perplexity', float('inf')))
                     if current_metric < best_metric:
                         best_metric = current_metric
-                        self.save_model(is_best=True)
+                        self.save_checkpoint(
+                            epoch=epoch,
+                            optimizer=optimizer,
+                            scheduler=scheduler,
+                            metrics=eval_metrics,
+                            is_best=True
+                        )
                 except Exception as e:
-                    print(f"Warning: Evaluation failed: {str(e)}")
-                    print("Continuing training without evaluation...")
+                    self.logger.error(f"Evaluation failed: {str(e)}")
+                    self.logger.warning("Continuing training without evaluation...")
             
             # Save checkpoint if needed
             if save_steps and (epoch + 1) % save_steps == 0:
-                self.save_model(epoch=epoch)
+                self.save_checkpoint(
+                    epoch=epoch,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
+                    metrics=epoch_metrics
+                )
         
         # Final evaluation
         try:
             final_metrics = self.evaluator.evaluate('test')
             metrics['final_test'] = final_metrics
         except Exception as e:
-            print(f"Warning: Final evaluation failed: {str(e)}")
-            print("Training completed but evaluation could not be performed.")
+            self.logger.error(f"Final evaluation failed: {str(e)}")
+            self.logger.warning("Training completed but evaluation could not be performed.")
         
         if self.wandb_enabled:
             wandb.log(metrics)
@@ -157,14 +259,43 @@ class Trainer:
         
         return metrics
     
-    def save_model(self, epoch: Optional[int] = None, is_best: bool = False):
-        """Save model checkpoint."""
-        model_name = self.model_handler.model_config['name']
-        dataset_name = self.dataset_handler.config['name']
+    def save_checkpoint(self, epoch: int, optimizer: torch.optim.Optimizer,
+                     scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
+                     metrics: Optional[Dict] = None, is_best: bool = False):
+        """Save a complete training checkpoint.
         
+        Args:
+            epoch: Current epoch number
+            optimizer: Current optimizer state
+            scheduler: Optional scheduler state
+            metrics: Optional metrics to save
+            is_best: Whether this is the best model so far
+        """
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'metrics': metrics or {},
+            'config': self.config
+        }
+        
+        if scheduler is not None:
+            checkpoint['scheduler_state_dict'] = scheduler.state_dict()
+        
+        # Save checkpoint
+        checkpoint_path = self.checkpoint_dir / f'checkpoint_epoch_{epoch}.pt'
+        torch.save(checkpoint, checkpoint_path)
+        self.logger.info(f"Saved checkpoint to {checkpoint_path}")
+        
+        # Save best model if needed
         if is_best:
-            save_path = MODELS_DIR / f"{model_name}_{dataset_name}_best"
-        else:
-            save_path = MODELS_DIR / f"{model_name}_{dataset_name}_epoch_{epoch}"
+            best_path = self.checkpoint_dir / 'best_model.pt'
+            torch.save(checkpoint, best_path)
+            self.logger.info(f"Saved best model to {best_path}")
         
-        self.model_handler.save_model(str(save_path))
+        # Cleanup old checkpoints (keep only last 3)
+        checkpoints = sorted(self.checkpoint_dir.glob('checkpoint_epoch_*.pt'))
+        if len(checkpoints) > 3:
+            for checkpoint in checkpoints[:-3]:
+                checkpoint.unlink()
+                self.logger.info(f"Removed old checkpoint: {checkpoint}")
