@@ -1,7 +1,7 @@
 """
 Model evaluation module.
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import torch
 import json
 from pathlib import Path
@@ -13,22 +13,25 @@ import math
 from src.models.model_handler import ModelHandler
 from src.data.dataset import DatasetHandler
 from src.utils.config import RESULTS_DIR
+from src.utils.metrics_tracker import MetricsTracker
 
 class Evaluator:
     """Handles model evaluation for different tasks."""
     
-    def __init__(self, model_handler: ModelHandler, dataset_handler: DatasetHandler):
+    def __init__(self, model_handler: ModelHandler, dataset_handler: DatasetHandler, metrics_tracker: Optional[MetricsTracker] = None):
         """
         Initialize evaluator.
         
         Args:
             model_handler: Initialized ModelHandler instance
             dataset_handler: Initialized DatasetHandler instance
+            metrics_tracker: Optional MetricsTracker instance for logging metrics
         """
         self.model_handler = model_handler
         self.dataset_handler = dataset_handler
         self.device = model_handler.device
         self.task = dataset_handler.config['task']
+        self.metrics_tracker = metrics_tracker
     
     def evaluate_classification(self, split: str = 'test') -> Dict[str, Any]:
         """Evaluate classification performance."""
@@ -48,11 +51,16 @@ class Evaluator:
                 all_preds.extend(predictions.cpu().numpy())
                 all_labels.extend(batch['labels'].cpu().numpy())
         
-        return {
+        metrics = {
             'accuracy': accuracy_score(all_labels, all_preds),
             'f1_score': f1_score(all_labels, all_preds, average='weighted'),
             'classification_report': classification_report(all_labels, all_preds)
         }
+        
+        if self.metrics_tracker:
+            self.metrics_tracker.log_eval_step(metrics, -1, -1)  # -1 indicates evaluation-only metrics
+        
+        return metrics
     
     def evaluate_language_modeling(self, split: str = 'test') -> Dict[str, float]:
         """Evaluate language modeling performance (perplexity)."""
@@ -73,10 +81,15 @@ class Evaluator:
         avg_loss = total_loss / total_length
         perplexity = math.exp(avg_loss)
         
-        return {
+        metrics = {
             'loss': avg_loss,
             'perplexity': perplexity
         }
+        
+        if self.metrics_tracker:
+            self.metrics_tracker.log_eval_step(metrics, -1, -1)  # -1 indicates evaluation-only metrics
+        
+        return metrics
     
     def evaluate_summarization(self, split: str = 'test') -> Dict[str, float]:
         """Evaluate summarization performance (ROUGE scores)."""

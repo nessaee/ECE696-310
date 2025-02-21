@@ -1,13 +1,49 @@
-# python src/data/download.py --models gpt2-small distilgpt2 --datasets imdb --task classification
-# python src/main.py --mode evaluate --model gpt2-small --dataset imdb
-# python src/main.py --mode train --model gpt2-small --dataset imdb --num_epochs 3 --eval_steps 1 --save_steps 1 --use_wandb
+#!/bin/bash
 
+# Helper function to run experiment pipeline
+run_experiment() {
+    local model=$1
+    local dataset=$2
+    local task=$3
+    local epochs=$4
+    local experiment_name="${model}_${dataset}_$(date +%Y%m%d_%H%M%S)"
+    
+    echo "Running experiment: $experiment_name"
+    echo "Model: $model, Dataset: $dataset, Task: $task"
+    
+    # 1. Download data and model
+    echo "\nStep 1: Downloading data and model..."
+    ./scripts/download_data.sh --datasets "$dataset" --models "$model" --task "$task"
+    
+    # 2. Run baseline evaluation
+    echo "\nStep 2: Running baseline evaluation..."
+    ./scripts/evaluate_baseline.sh --model "$model" --dataset "$dataset"
+    
+    # 3. Fine-tune model
+    echo "\nStep 3: Fine-tuning model..."
+    ./scripts/finetune_model.sh \
+        --model "$model" \
+        --dataset "$dataset" \
+        --epochs "$epochs" \
+        --output-dir "models/$experiment_name" \
+        --use-wandb
+    
+    # 4. Generate visualizations
+    echo "\nStep 4: Generating performance visualizations..."
+    python src/visualization/plot_metrics.py \
+        "results/$experiment_name" \
+        --save-dir "results/$experiment_name/plots"
+    
+    echo "\nExperiment complete! Results saved in: results/$experiment_name"
+    echo "Visualizations saved in: results/$experiment_name/plots"
+}
 
-# 1. Download data and model
-./scripts/download_data.sh --datasets imdb --models gpt2-small --task classification
+# Run experiments
 
-# 2. Run baseline evaluation
-./scripts/evaluate_baseline.sh --model gpt2-small --dataset imdb
+echo "Starting GPT-2 Small experiment..."
+#########################################################################################
+run_experiment "gpt2-small" "imdb" "classification" 3
 
-# 3. Fine-tune model
-./scripts/finetune_model.sh --model gpt2-small --dataset imdb --epochs 3 --use-wandb
+echo "\nStarting DistilGPT-2 experiment..."
+#########################################################################################
+run_experiment "distilgpt2" "imdb" "classification" 3

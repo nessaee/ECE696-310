@@ -21,8 +21,9 @@ from datetime import datetime
 from src.models.model_handler import ModelHandler
 from src.data.dataset import DatasetHandler
 from src.evaluation.evaluator import Evaluator
-from src.utils.config import MODELS_DIR
+from src.utils.config import MODELS_DIR, RESULTS_DIR
 from src.utils.logging_config import setup_logging
+from src.utils.metrics_tracker import MetricsTracker
 
 class Trainer:
     """Handles model training and fine-tuning."""
@@ -57,6 +58,9 @@ class Trainer:
         self.device = model_handler.device
         self.model = model_handler.model
         self.task = dataset_handler.config['task']
+        
+        # Initialize metrics tracker
+        self.metrics_tracker = MetricsTracker(self.experiment_name, RESULTS_DIR)
         
         # Create checkpoint directory
         self.checkpoint_dir = MODELS_DIR / self.experiment_name
@@ -126,11 +130,16 @@ class Trainer:
                     
                     # Update progress bar
                     current_lr = scheduler.get_last_lr()[0] if scheduler else optimizer.param_groups[0]['lr']
-                    pbar.set_postfix({
+                    step_metrics = {
                         'loss': loss.item(),
                         'avg_loss': metrics['loss'] / metrics['steps'],
-                        'lr': current_lr
-                    })
+                        'learning_rate': current_lr
+                    }
+                    
+                    pbar.set_postfix(step_metrics)
+                    
+                    # Log metrics
+                    self.metrics_tracker.log_training_step(step_metrics, step, epoch)
                     
                     # Log to wandb
                     if self.wandb_enabled:
@@ -149,6 +158,9 @@ class Trainer:
         # Compute epoch metrics
         metrics['avg_loss'] = metrics['loss'] / metrics['steps']
         metrics['time'] = time.time() - start_time
+        
+        # Log epoch metrics
+        self.metrics_tracker.log_epoch(metrics, epoch)
         
         self.logger.info(f"Epoch {epoch} completed in {metrics['time']:.2f}s with avg_loss={metrics['avg_loss']:.4f}")
         
@@ -192,6 +204,7 @@ class Trainer:
             try:
                 wandb.init(
                     project="llm-finetuning",
+                    name=self.experiment_name,
                     config={
                         "model": self.model_handler.model_config['name'],
                         "dataset": self.dataset_handler.config['name'],
