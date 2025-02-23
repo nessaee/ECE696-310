@@ -17,9 +17,28 @@ analyze_experiment() {
     
     if [ -f "$exp_dir/metrics.json" ]; then
         echo "Found JSON metrics, analyzing..."
-        python src/visualization/analyze_json_metrics.py \
-            "$exp_dir/metrics.json" \
-            --output-dir "$output_dir"
+        
+        # Determine task type from metadata
+        local task="classification"  # Default task
+        if [ -f "$exp_dir/metrics.json" ]; then
+            local dataset=$(jq -r '.metadata.dataset' "$exp_dir/metrics.json")
+            if [ "$dataset" = "wikitext" ]; then
+                task="language-modeling"
+            fi
+        fi
+        
+        # Use appropriate visualization script
+        if [ "$task" = "language-modeling" ]; then
+            echo "Detected language modeling task, using LM metrics analyzer..."
+            python src/visualization/analyze_lm_metrics.py \
+                "$exp_dir/metrics.json" \
+                --output-dir "$output_dir"
+        else
+            echo "Detected classification task, using classification metrics analyzer..."
+            python src/visualization/analyze_json_metrics.py \
+                "$exp_dir/metrics.json" \
+                --output-dir "$output_dir"
+        fi
     fi
 }
 
@@ -29,7 +48,7 @@ if [ $# -eq 0 ]; then
     echo "No directories specified, analyzing all experiments in results/..."
     
     # Find all experiment directories
-    for exp_dir in results/train_*; do
+    for exp_dir in report/data/train_*; do
         if [ -d "$exp_dir" ]; then
             # Create analysis subdirectory
             analysis_dir="$exp_dir/analysis"

@@ -56,20 +56,43 @@ def parse_classification_report(report_str: str) -> Dict[str, Dict[str, float]]:
     """
     Parse the classification report string into a structured format.
     """
-    lines = report_str.strip().split('\n')[2:]  # Skip header
+    lines = report_str.strip().split('\n')
     metrics = {}
     
     for line in lines:
-        if line.strip():
-            parts = re.split(r'\s+', line.strip())
-            if len(parts) >= 5:  # Valid metric line
-                class_name = parts[0]
-                metrics[class_name] = {
-                    'precision': float(parts[1]),
-                    'recall': float(parts[2]),
-                    'f1_score': float(parts[3]),
-                    'support': int(parts[4])
-                }
+        if not line.strip() or 'precision' in line:
+            continue
+            
+        parts = re.split(r'\s+', line.strip())
+        
+        # Handle accuracy line
+        if parts[0] == 'accuracy':
+            metrics['accuracy'] = {
+                'precision': float(parts[1]),
+                'recall': float(parts[1]),  # Same as precision for accuracy
+                'f1_score': float(parts[1]),  # Same as precision for accuracy
+                'support': int(parts[2])
+            }
+            continue
+            
+        # Handle macro/weighted avg lines
+        if len(parts) > 4 and 'avg' in parts[1]:
+            class_name = f'{parts[0]} {parts[1]}'
+            metrics[class_name] = {
+                'precision': float(parts[2]),
+                'recall': float(parts[3]),
+                'f1_score': float(parts[4]),
+                'support': int(parts[5])
+            }
+        # Handle regular class lines
+        elif len(parts) >= 4:
+            class_name = parts[0]
+            metrics[class_name] = {
+                'precision': float(parts[1]),
+                'recall': float(parts[2]),
+                'f1_score': float(parts[3]),
+                'support': int(parts[4])
+            }
     
     return metrics
 
@@ -115,31 +138,54 @@ def plot_training_metrics(metrics: Dict[str, List[float]], save_dir: Path):
     ax.set_xlabel('Epoch')
     ax.set_ylabel('Number of Steps')
     
-    plt.tight_layout()
-    plt.savefig(save_dir / 'training_metrics.png')
+    # Adjust layout and save
+    plt.tight_layout(rect=[0, 0, 1, 0.96])  # Leave space for suptitle
+    plt.savefig(save_dir / 'training_metrics.png', bbox_inches='tight', dpi=100)
     plt.close()
     
     # Figure 2: Per-Class Performance
     final_report = parse_classification_report(data['final_test']['classification_report'])
-    classes = [k for k in final_report.keys() if k not in ['accuracy', 'macro avg', 'weighted avg']]
     
+    # Create two subplots: one for classes, one for averages
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), height_ratios=[1, 0.7])
+    fig.suptitle('Final Test Performance', fontsize=16, y=0.98)
+    plt.subplots_adjust(hspace=0.3)
+    
+    # Plot 1: Class Performance
+    classes = [k for k in final_report.keys() if 'avg' not in k]
     metrics_to_plot = ['precision', 'recall', 'f1_score']
     x = np.arange(len(classes))
     width = 0.25
     
-    fig, ax = plt.subplots(figsize=(10, 6))
     for i, metric in enumerate(metrics_to_plot):
         values = [final_report[cls][metric] for cls in classes]
-        ax.bar(x + i*width, values, width, label=metric.capitalize())
+        ax1.bar(x + i*width, values, width, label=metric.capitalize())
     
-    ax.set_ylabel('Score')
-    ax.set_title('Final Test Performance by Class')
-    ax.set_xticks(x + width)
-    ax.set_xticklabels(classes)
-    ax.legend()
+    ax1.set_ylabel('Score')
+    ax1.set_title('Performance by Class')
+    ax1.set_xticks(x + width)
+    ax1.set_xticklabels(classes)
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
     
-    plt.tight_layout()
-    plt.savefig(save_dir / 'final_test_metrics.png')
+    # Plot 2: Average Performance
+    averages = [k for k in final_report.keys() if 'avg' in k]
+    x = np.arange(len(averages))
+    
+    for i, metric in enumerate(metrics_to_plot):
+        values = [final_report[avg][metric] for avg in averages]
+        ax2.bar(x + i*width, values, width, label=metric.capitalize())
+    
+    ax2.set_ylabel('Score')
+    ax2.set_title('Average Performance Metrics')
+    ax2.set_xticks(x + width)
+    ax2.set_xticklabels([avg.replace(' avg', '') for avg in averages])
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    # Adjust layout and save
+    plt.tight_layout(rect=[0, 0, 1, 0.96])  # Leave space for suptitle
+    plt.savefig(save_dir / 'final_test_metrics.png', bbox_inches='tight', dpi=100)
     plt.close()
 
 def create_summary(data: Dict[str, Any], metrics: Dict[str, List[float]], save_dir: Path):

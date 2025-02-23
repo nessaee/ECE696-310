@@ -52,72 +52,113 @@ def plot_training_progress(epoch_df: pd.DataFrame, save_dir: Path):
     """
     Plot various training metrics over epochs.
     """
-    # Create figure with multiple subplots
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    # Determine task type based on available metrics
+    is_classification = 'eval_accuracy' in epoch_df.columns
+    is_language_modeling = 'eval_perplexity' in epoch_df.columns
+    
+    # Create figure with appropriate number of subplots
+    if is_classification:
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        axes = axes.flatten()
+    else:  # Language modeling
+        fig, axes = plt.subplots(2, 1, figsize=(12, 12))
+        if not isinstance(axes, np.ndarray):
+            axes = np.array([axes])
+        axes = axes.flatten()
+    
     fig.suptitle('Training Progress', fontsize=16, y=1.02)
     
-    # Plot 1: Training Loss
-    ax = axes[0, 0]
+    # Plot 1: Training Loss (common for both tasks)
+    ax = axes[0]
     ax.plot(epoch_df['epoch'], epoch_df['avg_loss'], marker='o', label='Average Loss')
     ax.set_title('Training Loss per Epoch')
     ax.set_xlabel('Epoch')
     ax.set_ylabel('Loss')
     
-    # Plot 2: Evaluation Metrics
-    ax = axes[0, 1]
-    ax.plot(epoch_df['epoch'], epoch_df['eval_accuracy'], marker='o', label='Accuracy')
-    ax.plot(epoch_df['epoch'], epoch_df['eval_f1_score'], marker='s', label='F1 Score')
-    ax.set_title('Evaluation Metrics per Epoch')
-    ax.set_xlabel('Epoch')
-    ax.set_ylabel('Score')
-    ax.legend()
+    # Plot task-specific metrics
+    if is_classification:
+        # Plot 2: Classification Metrics
+        ax = axes[1]
+        ax.plot(epoch_df['epoch'], epoch_df['eval_accuracy'], marker='o', label='Accuracy')
+        if 'eval_f1_score' in epoch_df.columns:
+            ax.plot(epoch_df['epoch'], epoch_df['eval_f1_score'], marker='s', label='F1 Score')
+        ax.set_title('Evaluation Metrics per Epoch')
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Score')
+        ax.legend()
+        
+        # Plot 3: Training Time
+        ax = axes[2]
+        ax.plot(epoch_df['epoch'], epoch_df['time'] / 60, marker='o')  # Convert to minutes
+        ax.set_title('Training Time per Epoch')
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Time (minutes)')
+        
+        # Plot 4: Steps per Epoch
+        ax = axes[3]
+        ax.plot(epoch_df['epoch'], epoch_df['steps'], marker='o')
+        ax.set_title('Steps per Epoch')
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Number of Steps')
+        
+    elif is_language_modeling:
+        # Plot 2: Perplexity
+        ax = axes[1]
+        ax.plot(epoch_df['epoch'], epoch_df['eval_perplexity'], marker='o', label='Validation')
+        ax.set_title('Perplexity per Epoch')
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Perplexity')
+        ax.legend()
     
-    # Plot 3: Training Time
-    ax = axes[1, 0]
-    ax.plot(epoch_df['epoch'], epoch_df['time'] / 60, marker='o')  # Convert to minutes
-    ax.set_title('Training Time per Epoch')
-    ax.set_xlabel('Epoch')
-    ax.set_ylabel('Time (minutes)')
-    
-    # Plot 4: Steps per Epoch
-    ax = axes[1, 1]
-    ax.plot(epoch_df['epoch'], epoch_df['steps'], marker='o')
-    ax.set_title('Steps per Epoch')
-    ax.set_xlabel('Epoch')
-    ax.set_ylabel('Number of Steps')
-    
-    plt.tight_layout()
-    plt.savefig(save_dir / 'training_progress.png')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(save_dir / 'training_progress.png', dpi=100, bbox_inches='tight')
     plt.close()
 
 def create_summary_table(df: pd.DataFrame, epoch_df: pd.DataFrame, save_dir: Path):
     """
     Create and save a summary of the training run.
     """
+    # Determine task type based on available metrics
+    is_classification = 'final_test_accuracy' in df.columns
+    is_language_modeling = 'final_test_perplexity' in df.columns
+    
     summary = {
         'model': df['model'].iloc[0],
         'dataset': df['dataset'].iloc[0],
         'num_epochs': int(df['num_epochs'].iloc[0]),
-        'learning_rate': float(df['learning_rate'].iloc[0]),
-        'final_test_metrics': {
-            'accuracy': float(df['final_test_accuracy'].iloc[0]),
-            'f1_score': float(df['final_test_f1_score'].iloc[0])
-        },
+        'learning_rate': float(df['learning_rate'].iloc[0]) if pd.notnull(df['learning_rate'].iloc[0]) else None,
         'training_progress': {
             'initial_loss': float(epoch_df['avg_loss'].iloc[0]),
             'final_loss': float(epoch_df['avg_loss'].iloc[-1]),
-            'best_eval_accuracy': float(epoch_df['eval_accuracy'].max()),
-            'best_eval_f1_score': float(epoch_df['eval_f1_score'].max()),
             'total_training_time_minutes': float(epoch_df['time'].sum() / 60),
             'total_steps': int(epoch_df['steps'].sum())
         }
     }
     
+    # Add task-specific metrics
+    if is_classification:
+        summary['final_test_metrics'] = {
+            'accuracy': float(df['final_test_accuracy'].iloc[0]),
+            'f1_score': float(df['final_test_f1_score'].iloc[0])
+        }
+        summary['training_progress'].update({
+            'best_eval_accuracy': float(epoch_df['eval_accuracy'].max()),
+            'best_eval_f1_score': float(epoch_df['eval_f1_score'].max()) if 'eval_f1_score' in epoch_df.columns else None
+        })
+    elif is_language_modeling:
+        summary['final_test_metrics'] = {
+            'loss': float(df['final_test_loss'].iloc[0]),
+            'perplexity': float(df['final_test_perplexity'].iloc[0])
+        }
+        summary['training_progress'].update({
+            'best_eval_perplexity': float(epoch_df['eval_perplexity'].min())
+        })
+    
     # Save as JSON
     with open(save_dir / 'training_summary.json', 'w') as f:
         json.dump(summary, f, indent=2)
     
-    # Also save as markdown for easy viewing
+    # Create markdown content
     markdown = f"""# Training Summary
 
 ## Configuration
@@ -127,15 +168,33 @@ def create_summary_table(df: pd.DataFrame, epoch_df: pd.DataFrame, save_dir: Pat
 - Learning Rate: {summary['learning_rate']}
 
 ## Final Test Results
-- Accuracy: {summary['final_test_metrics']['accuracy']:.4f}
+"""
+    
+    # Add task-specific metrics to markdown
+    if is_classification:
+        markdown += f"""- Accuracy: {summary['final_test_metrics']['accuracy']:.4f}
 - F1 Score: {summary['final_test_metrics']['f1_score']:.4f}
-
+"""
+    elif is_language_modeling:
+        markdown += f"""- Loss: {summary['final_test_metrics']['loss']:.4f}
+- Perplexity: {summary['final_test_metrics']['perplexity']:.4f}
+"""
+    
+    markdown += f"""
 ## Training Progress
 - Initial Loss: {summary['training_progress']['initial_loss']:.4f}
 - Final Loss: {summary['training_progress']['final_loss']:.4f}
-- Best Evaluation Accuracy: {summary['training_progress']['best_eval_accuracy']:.4f}
+"""
+    
+    if is_classification:
+        markdown += f"""- Best Evaluation Accuracy: {summary['training_progress']['best_eval_accuracy']:.4f}
 - Best Evaluation F1 Score: {summary['training_progress']['best_eval_f1_score']:.4f}
-- Total Training Time: {summary['training_progress']['total_training_time_minutes']:.2f} minutes
+"""
+    elif is_language_modeling:
+        markdown += f"""- Best Evaluation Perplexity: {summary['training_progress']['best_eval_perplexity']:.4f}
+"""
+    
+    markdown += f"""- Total Training Time: {summary['training_progress']['total_training_time_minutes']:.2f} minutes
 - Total Steps: {summary['training_progress']['total_steps']}
 """
     

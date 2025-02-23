@@ -40,10 +40,12 @@ run_experiment() {
 
 # Run experiments
 
-echo "Starting GPT-2 Small experiment..."
+echo "Starting IMDB Classification experiments..."
 #########################################################################################
-run_experiment "gpt2-small" "imdb" "classification" 3
+run_experiment "gpt2-small" "imdb" "classification" 10
+run_experiment "distilgpt2" "imdb" "classification" 10
 
-echo "\nStarting DistilGPT-2 experiment..."
+echo "\nStarting WikiText-2 Language Modeling experiments..."
 #########################################################################################
-run_experiment "distilgpt2" "imdb" "classification" 3
+run_experiment "gpt2-small" "wikitext" "language-modeling" 10
+run_experiment "distilgpt2" "wikitext" "language-modeling" 10
