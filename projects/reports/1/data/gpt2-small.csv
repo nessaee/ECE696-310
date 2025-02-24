@@ -1,0 +1,5 @@
+,accuracy,precision,recall,f1,accuracy_improvement_%,precision_improvement_%,recall_improvement_%,f1_improvement_%
+Baseline,0.5008,0.52,0.5,0.34,0.0,0.0,0.0,0.0
+Epoch 0,0.8877,0.8881,0.8877,0.8877,77.26,70.79,77.54,161.09
+Epoch 1,0.954,0.954,0.954,0.954,90.5,83.46,90.8,180.59
+Epoch 2,0.9801,0.9801,0.9801,0.9801,95.71,88.48,96.02,188.26

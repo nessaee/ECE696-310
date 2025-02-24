@@ -1,0 +1,227 @@
+\documentclass[11pt]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+
+% Document settings
+\title{IMDB Sentiment Classification using GPT-2 and DistilGPT-2}
+\author{Ameer Nessaee}
+\date{\today}
+
+% Custom commands
+\newcommand{\modelname}[1]{\texttt{#1}}
+
+\begin{document}
+
+
+\maketitle
+
+\begin{abstract}
+This report presents a comparative analysis of \modelname{GPT-2} and \modelname{DistilGPT-2} for sentiment classification on the IMDB dataset. We evaluate their performance, analyze the results, and provide examples demonstrating their capabilities in classifying movie reviews.
+\end{abstract}
+
+\section{Introduction}
+Sentiment analysis is a crucial task in natural language processing, with applications ranging from product reviews to social media analysis. 
+Large language models like GPT-2~\cite{gpt2} have shown remarkable capabilities in understanding and generating human-like text. 
+This study explores the use of GPT-2 and its distilled version, which follows similar principles to DistilBERT~\cite{distilbert}, 
+for sentiment classification on the IMDB movie review dataset~\cite{imdb}.
+
+\section{Dataset Description}
+\subsection{IMDB Dataset}
+The IMDB dataset is comprised of 50,000 movie reviews labeled with binary sentiment (positive or negative). 
+The train and test datasets are pre-determined, with each containing 25,000 reviews \cite{imdb}.
+
+
+The train and test datasets each contain 25,000 reviews
+
+% Description of the IMDB dataset, including:
+% - Size and composition
+% - Data distribution
+% - Preprocessing steps
+
+\section{Models and Methods}
+
+\subsection{Model Architectures}
+Both models use byte-pair encoding with a vocabulary size of 50,257 tokens and maximum sequence length of 1,024 tokens. They share the same tokenization approach and vocabulary, enabling direct comparison of their performance.
+
+\subsection{GPT-2}
+GPT-2 Small is implemented as a decoder-only transformer with the following core components:
+
+\subsubsection{Architecture Specifications}
+\begin{itemize}
+  \item 12 transformer blocks
+  \item Hidden size: 768 dimensions
+  \item 12 attention heads (64 dimensions per head)
+  \item Feed-forward size: 3,072 (4x hidden size)
+  \item Total parameters: 124M
+\end{itemize}
+
+\subsubsection{Implementation Details}
+\begin{itemize}
+  \item Activation Function: GELU
+  \item Layer Normalization: Pre-norm configuration
+  \item Position Embeddings: Learned, absolute
+  \item Dropout Rate: 0.1
+  \item Core Components:
+    \begin{itemize}
+      \item Multi-head self-attention layers
+      \item Position-wise feed-forward networks
+      \item Layer normalization
+      \item Residual connections
+    \end{itemize}
+\end{itemize}
+
+\subsection{DistilGPT2}
+DistilGPT2 is a compressed version of GPT-2 Small, designed through knowledge distillation while maintaining core functionality.
+
+\subsubsection{Architecture Overview}
+\begin{itemize}
+  \item 6 transformer layers (reduced from 12)
+  \item Hidden size: 768 (preserved)
+  \item 12 attention heads (preserved)
+  \item Feed-forward size: 3,072 (preserved)
+  \item Total parameters: 82M (34\% reduction)
+\end{itemize}
+
+\subsubsection{Distillation Benefits}
+\begin{itemize}
+  \item \textbf{Computational Efficiency:}
+    \begin{itemize}
+      \item 40\% faster inference time
+      \item 34\% reduction in parameter count
+      \item Lower memory footprint
+    \end{itemize}
+  \item \textbf{Performance:}
+    \begin{itemize}
+      \item Maintains 95\% of GPT-2's performance
+      \item Better generalization on some tasks
+      \item More robust to input variations
+    \end{itemize}
+\end{itemize}
+
+\subsection{Fine-tuning Approach}
+Both models were fine-tuned for the IMDB classification task using the following strategy:
+
+\subsubsection{Task Adaptation}
+\begin{itemize}
+  \item Added classification head: Linear(768, 2)
+  \item Initialized with truncated normal distribution
+  \item Applied task-specific dropout (0.1)
+  \item Used cross-entropy loss for training
+\end{itemize}
+
+
+\subsubsection{Training Process}
+\begin{itemize}
+  \item \textbf{Initial Phase:}
+    \begin{itemize}
+      \item Optional freezing of transformer layers
+      \item Training only task-specific heads
+      \item Duration: 1 epoch
+    \end{itemize}
+  \item \textbf{Full Fine-tuning:}
+    \begin{itemize}
+      \item All layers unfrozen
+      \item Gradual learning rate warmup
+      \item Batch size optimization for stability
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Evaluation Process}
+\begin{itemize}
+  \item Baseline evaluation on pre-trained models
+  \item Regular evaluation during fine-tuning
+  \item Metrics tracked:
+    \begin{itemize}
+      \item Classification accuracy
+      \item F1 score
+      \item Training and validation loss
+    \end{itemize}
+\end{itemize}
+
+
+
+
+
+\section{Results and Analysis}
+\subsection{Baseline Evaluation}
+
+\subsection{Quantitative Results}
+% Tables and charts showing:
+% - Accuracy
+% - Precision/Recall
+% - F1 scores
+% - Training time comparison
+
+\subsection{Performance Analysis}
+% Discussion of:
+% - Model comparison
+% - Trade-offs between models
+% - Performance insights
+
+\section{Example Outputs}
+% Show actual examples of:
+% - Correct classifications
+% - Misclassifications
+% - Analysis of model behavior
+
+\section{Conclusion}
+% Summary of findings and future work
+
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\begin{table}[htbp]
+\centering
+\caption{Performance Comparison of DistilGPT2 and GPT2-Small Models}
+\label{tab:model-comparison}
+\begin{tabular}{llcccc}
+\toprule
+\textbf{Model} & \textbf{Epoch} & \textbf{Accuracy} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} \\
+\midrule
+\multirow{4}{*}{DistilGPT2} & Baseline & 0.519 & 0.520 & 0.520 & 0.500 \\
+ & 0 & 0.873 & 0.874 & 0.873 & 0.873 \\
+ & 1 & 0.943 & 0.943 & 0.943 & 0.943 \\
+ & 2 & \textbf{0.970} & \textbf{0.970} & \textbf{0.970} & \textbf{0.970} \\
+\midrule
+\multirow{4}{*}{GPT2-Small} & Baseline & 0.501 & 0.520 & 0.500 & 0.340 \\
+ & 0 & 0.888 & 0.888 & 0.888 & 0.888 \\
+ & 1 & 0.954 & 0.954 & 0.954 & 0.954 \\
+ & 2 & \textbf{0.980} & \textbf{0.980} & \textbf{0.980} & \textbf{0.980} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Improvement Percentages Over Baseline}
+\label{tab:improvement-comparison}
+\begin{tabular}{llcccc}
+\toprule
+\textbf{Model} & \textbf{Epoch} & \textbf{Accuracy} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} \\
+\midrule
+\multirow{3}{*}{DistilGPT2} & 0 & 68.35\% & 68.06\% & 67.96\% & 74.66\% \\
+ & 1 & 81.84\% & 81.42\% & 81.42\% & 88.68\% \\
+ & 2 & 86.93\% & 86.50\% & 86.50\% & 93.96\% \\
+\midrule
+\multirow{3}{*}{GPT2-Small} & 0 & 77.26\% & 70.79\% & 77.54\% & 161.09\% \\
+ & 1 & 90.50\% & 83.46\% & 90.80\% & 180.59\% \\
+ & 2 & \textbf{95.71\%} & \textbf{88.48\%} & \textbf{96.02\%} & \textbf{188.26\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}

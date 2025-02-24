@@ -1,18 +1,38 @@
 #!/usr/bin/env python3
 
-import shutil
+"""
+consolidate_runs.py - Experiment Results Consolidation Script
+
+This script consolidates and analyzes results from multiple training runs. It:
+1. Parses metrics and configurations from individual run directories
+2. Consolidates data into structured DataFrames
+3. Generates summary statistics and visualizations
+4. Saves processed results in a standardized format
+
+Typical usage:
+    python consolidate_runs.py <results_dir>
+    
+where <results_dir> is the path to a model's results directory (e.g., results/gpt2-small)
+"""
+
 import json
 import pandas as pd
 import numpy as np
-import seaborn as sns
 import matplotlib.pyplot as plt
 from pathlib import Path
 import sys
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 def parse_metrics(metrics_file: Path) -> Dict[str, Any]:
-    """Parse metrics from a JSON file."""
+    """Parse metrics from a JSON file.
+    
+    Args:
+        metrics_file: Path to the metrics JSON file
+        
+    Returns:
+        Dictionary containing parsed metrics or empty dict if parsing fails
+    """
     try:
         with open(metrics_file, 'r') as f:
             return json.load(f)
@@ -21,7 +41,14 @@ def parse_metrics(metrics_file: Path) -> Dict[str, Any]:
         return {}
 
 def parse_config(config_file: Path) -> Dict[str, Any]:
-    """Parse configuration from a JSON file."""
+    """Parse configuration from a JSON file.
+    
+    Args:
+        config_file: Path to the configuration JSON file
+        
+    Returns:
+        Dictionary containing parsed configuration or empty dict if parsing fails
+    """
     try:
         with open(config_file, 'r') as f:
             return json.load(f)
@@ -30,20 +57,47 @@ def parse_config(config_file: Path) -> Dict[str, Any]:
         return {}
 
 def get_dataset_from_log(run_dir: Path) -> str:
-    """Extract dataset name from training log filename."""
+    """Extract dataset name from training log filename.
+    
+    The function looks for log files matching the pattern 'train_*.log' and
+    extracts the dataset name from the filename, which follows the format:
+    train_<model>_<dataset>_<timestamp>.log
+    
+    Args:
+        run_dir: Path to the run directory containing log files
+        
+    Returns:
+        Dataset name extracted from the log filename or 'unknown' if not found
+    """
     log_files = list(run_dir.glob("train_*.log"))
     if not log_files:
         return "unknown"
     
     log_name = log_files[0].name
-    # Expected format: train_distilgpt2_dataset_timestamp.log
     parts = log_name.split('_')
     if len(parts) >= 3:
         return parts[2]
     return "unknown"
 
 def create_training_progression_df(train_metrics: Dict[str, List[Dict]], configs: Dict[str, Dict]) -> pd.DataFrame:
-    """Create a DataFrame tracking training progression across epochs for all runs."""
+    """Create a DataFrame tracking training progression across epochs for all runs.
+    
+    This function processes training metrics from multiple runs and combines them into
+    a single DataFrame that shows how performance metrics evolved over training epochs.
+    
+    Args:
+        train_metrics: Dictionary mapping run IDs to lists of per-epoch metrics
+        configs: Dictionary mapping run IDs to run configurations
+        
+    Returns:
+        DataFrame containing training progression data with columns:
+        - run_id: Unique identifier for each training run
+        - dataset: Name of the dataset used
+        - epoch: Training epoch number
+        - loss: Training loss for the epoch
+        - accuracy, precision, recall, f1: Performance metrics
+        - timestamp: When the run was executed
+    """
     progression_data = []
     
     for run_id, metrics_list in train_metrics.items():
@@ -56,9 +110,6 @@ def create_training_progression_df(train_metrics: Dict[str, List[Dict]], configs
                 'dataset': dataset,
                 'epoch': epoch,
                 'loss': metrics.get('loss', float('nan')),
-                'avg_loss': metrics.get('avg_loss', float('nan')),
-                'steps': metrics.get('steps', 0),
-                'time': metrics.get('time', float('nan')),
                 'accuracy': metrics.get('accuracy', float('nan')),
                 'precision': metrics.get('precision_weighted', float('nan')),
                 'recall': metrics.get('recall_weighted', float('nan')),
@@ -70,10 +121,21 @@ def create_training_progression_df(train_metrics: Dict[str, List[Dict]], configs
     return pd.DataFrame(progression_data)
 
 def parse_classification_report(report_str: str) -> Dict[str, float]:
-    """Parse the classification report string to extract metrics."""
+    """Parse the classification report string to extract metrics.
+    
+    This function extracts performance metrics from a scikit-learn style
+    classification report string, focusing on macro and weighted averages.
+    
+    Args:
+        report_str: Classification report string from scikit-learn
+        
+    Returns:
+        Dictionary containing parsed metrics:
+        - macro_precision, macro_recall, macro_f1: Macro-averaged metrics
+        - precision, recall, f1: Weighted-averaged metrics
+    """
     metrics = {}
     try:
-        # Split the report into lines and process the last two lines for macro and weighted averages
         lines = report_str.strip().split('\n')
         macro_line = lines[-2].split()
         weighted_line = lines[-1].split()
@@ -91,13 +153,26 @@ def parse_classification_report(report_str: str) -> Dict[str, float]:
     return metrics
 
 def create_baseline_performance_df(test_metrics: Dict[str, Dict], configs: Dict[str, Dict]) -> pd.DataFrame:
-    """Create a DataFrame of baseline performance metrics."""
+    """Create a DataFrame of baseline performance metrics.
+    
+    This function processes test metrics from baseline model evaluations and
+    combines them into a single DataFrame for comparison.
+    
+    Args:
+        test_metrics: Dictionary mapping run IDs to test metrics
+        configs: Dictionary mapping run IDs to run configurations
+        
+    Returns:
+        DataFrame containing baseline performance metrics with columns:
+        - run_id: Unique identifier for each evaluation run
+        - dataset: Name of the dataset used
+        - accuracy, precision, recall, f1: Performance metrics
+        - timestamp: When the evaluation was performed
+    """
     baseline_data = []
     
     for run_id, metrics in test_metrics.items():
         config = configs.get(run_id, {})
-        
-        # Extract metrics from classification report
         report_metrics = parse_classification_report(metrics.get('classification_report', ''))
         
         data_point = {
@@ -105,8 +180,7 @@ def create_baseline_performance_df(test_metrics: Dict[str, Dict], configs: Dict[
             'dataset': config.get('dataset', 'unknown'),
             'timestamp': config.get('timestamp', 'unknown'),
             'accuracy': metrics.get('accuracy', float('nan')),
-            'f1_score': metrics.get('f1_score', float('nan')),
-            **report_metrics  # Include parsed classification report metrics
+            **report_metrics
         }
         baseline_data.append(data_point)
     
@@ -114,16 +188,32 @@ def create_baseline_performance_df(test_metrics: Dict[str, Dict], configs: Dict[
 
 def create_summary_report(base_dir: Path, train_metrics: Dict[str, List[Dict]], test_metrics: Dict[str, Dict],
                          configs: Dict[str, Dict]) -> None:
-    """Create a summary report of all runs."""
-    summary_data = []
+    """Create a comprehensive summary report of all experimental runs.
     
-    # Process each run that has either training metrics, test metrics, or config
+    This function processes all available metrics and configurations to create:
+    1. A summary CSV file with key metrics for each run
+    2. Baseline performance data and visualizations
+    3. Training progression data
+    
+    Args:
+        base_dir: Base directory where results will be saved
+        train_metrics: Dictionary mapping run IDs to lists of training metrics
+        test_metrics: Dictionary mapping run IDs to test metrics
+        configs: Dictionary mapping run IDs to run configurations
+    """
+    # Create analysis directory if it doesn't exist
+    analysis_dir = base_dir / 'analysis'
+    # Analysis directory is created by config.py
+    
+    # Get all unique run IDs
     all_run_ids = sorted(set(train_metrics.keys()) | set(test_metrics.keys()) | set(configs.keys()))
     
     if not all_run_ids:
         print("No data found to analyze!")
         return
-        
+    
+    # Create summary data
+    summary_data = []
     for run_id in all_run_ids:
         config = configs.get(run_id, {})
         train_data = train_metrics.get(run_id, [])
@@ -136,32 +226,26 @@ def create_summary_report(base_dir: Path, train_metrics: Dict[str, List[Dict]], 
             'evaluation_type': config.get('evaluation_type', 'unknown'),
             'timestamp': config.get('timestamp', 'unknown'),
             'final_train_loss': train_data[-1].get('loss', float('nan')) if train_data else float('nan'),
-            'test_loss': test_data.get('loss', float('nan')),
             'test_accuracy': test_data.get('accuracy', float('nan'))
         }
         summary_data.append(run_summary)
     
-    if not summary_data:
-        print("No data found to analyze!")
-        return
-        
+    # Save summary CSV
     df = pd.DataFrame(summary_data)
-    
-    # Save detailed summary as CSV
-    summary_file = base_dir / 'analysis' / 'performance_summary.csv'
+    summary_file = analysis_dir / 'performance_summary.csv'
     df.to_csv(summary_file, index=False)
     print(f"Saved performance summary to {summary_file}")
     
-    # Create and save baseline performance data
+    # Process baseline performance data
     if test_metrics:
         baseline_df = create_baseline_performance_df(test_metrics, configs)
-        baseline_file = base_dir / 'analysis' / 'baseline_performance.csv'
+        baseline_file = analysis_dir / 'baseline_performance.csv'
         baseline_df.to_csv(baseline_file, index=False)
         print(f"Saved baseline performance to {baseline_file}")
         
-        # Generate baseline performance visualizations
+        # Create baseline performance visualization
         plt.figure(figsize=(12, 6))
-        metrics_to_plot = ['accuracy', 'f1_score', 'precision', 'recall', 'f1']
+        metrics_to_plot = ['accuracy', 'precision', 'recall', 'f1']
         
         for dataset in baseline_df['dataset'].unique():
             dataset_metrics = baseline_df[baseline_df['dataset'] == dataset][metrics_to_plot]
@@ -179,25 +263,17 @@ def create_summary_report(base_dir: Path, train_metrics: Dict[str, List[Dict]], 
         plt.legend()
         plt.tight_layout()
         
-        baseline_plot_file = base_dir / 'analysis' / 'baseline_performance.png'
+        baseline_plot_file = analysis_dir / 'baseline_performance.png'
         plt.savefig(baseline_plot_file)
         plt.close()
         print(f"Saved baseline performance plot to {baseline_plot_file}")
     
-    # Create and save training progression data
+    # Process training progression data
     if train_metrics:
         progression_df = create_training_progression_df(train_metrics, configs)
-        progression_file = base_dir / 'analysis' / 'training_progression.csv'
+        progression_file = analysis_dir / 'training_progression.csv'
         progression_df.to_csv(progression_file, index=False)
         print(f"Saved training progression to {progression_file}")
-        
-        # Generate training curves plots
-        metrics_to_plot = [
-            ('loss', 'Training Loss'),
-            ('accuracy', 'Accuracy'),
-            ('f1', 'F1 Score'),
-            ('time', 'Time per Epoch')
-        ]
         
         for metric, title in metrics_to_plot:
             plt.figure(figsize=(12, 6))
@@ -365,7 +441,8 @@ def analyze_runs(base_dir: Path) -> None:
     # Create train and baseline subdirectories in analysis
     for subdir in ["train", "baseline"]:
         for subtype in ["metrics", "weights", "analysis"]:
-            (analysis_dir / subdir / subtype).mkdir(parents=True, exist_ok=True)
+            analysis_path = analysis_dir / subdir / subtype
+            # Analysis subdirectories are created by config.py
     
     # Generate summary report
     if train_metrics or test_metrics or configs:
@@ -390,8 +467,7 @@ def consolidate_runs(base_dir: Path):
         baseline_dir = model_dir / "baseline"
         
         for subdir in ["metrics", "weights", "analysis"]:
-            (train_dir / subdir).mkdir(parents=True, exist_ok=True)
-            (baseline_dir / subdir).mkdir(parents=True, exist_ok=True)
+            # Training and baseline directories are created by config.py
         
         # Track moved runs to clean up later
         moved_runs = []

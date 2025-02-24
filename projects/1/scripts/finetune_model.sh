@@ -5,7 +5,7 @@ set -e  # Exit on error
 
 # Set up logging
 LOG_DIR="logs"
-mkdir -p $LOG_DIR
+# Log directory is created by config.py
 LOG_FILE="$LOG_DIR/finetune_$(date +%Y%m%d_%H%M%S).log"
 
 # Function to log messages

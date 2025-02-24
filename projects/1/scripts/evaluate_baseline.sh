@@ -5,7 +5,7 @@ set -e  # Exit on error
 
 # Set up logging
 LOG_DIR="logs"
-mkdir -p $LOG_DIR
+# Log directory is created by config.py
 LOG_FILE="$LOG_DIR/baseline_eval_$(date +%Y%m%d_%H%M%S).log"
 
 # Function to log messages
@@ -66,7 +66,7 @@ if [ -z "$MODEL" ] || [ -z "$DATASET" ] || [ -z "$TASK" ]; then
 fi
 
 # Create output directory
-mkdir -p "$OUTPUT_DIR"
+# Output directory is created by config.py
 
 # Activate virtual environment and set PYTHONPATH
 source venv/bin/activate
@@ -106,8 +106,7 @@ if [ ! -z "$OUTPUT_DIR" ]; then
     
     # Setup output directory
     OUTPUT_DIR="${OUTPUT_DIR}/${MODEL}/run_${RUN_NUM}/baseline"
-    mkdir -p "$OUTPUT_DIR/metrics"
-    mkdir -p "$OUTPUT_DIR/analysis"
+    # Output subdirectories are created by config.py
     
     # Export output directory for the evaluator
     export RESULTS_DIR="$OUTPUT_DIR"

@@ -1,6 +1,6 @@
 # LLM Fine-tuning Project
 
-This project involves working with small open-source LLMs (like GPT-2, GPT-Neo, DistilGPT-2) for various NLP tasks including classification, language modeling, and summarization.
+This project involves fine-tuning and evaluating small open-source language models (like GPT-2 and DistilGPT-2) on various NLP tasks. The project includes a comprehensive pipeline for model training, evaluation, and performance analysis.
 
 ## Project Structure
 
@@ -8,11 +8,18 @@ This project involves working with small open-source LLMs (like GPT-2, GPT-Neo, 
 .
 ├── data/               # Dataset storage
 ├── models/            # Model checkpoints and configs
-├── notebooks/         # Jupyter notebooks for analysis
-├── src/              # Source code
-│   ├── data/         # Data processing scripts
-│   ├── models/       # Model training code
-│   └── evaluation/   # Evaluation scripts
+├── results/           # Experimental results
+│   ├── gpt2-small/    # Results for GPT-2 Small
+│   └── distilgpt2/    # Results for DistilGPT-2
+├── scripts/           # Analysis and processing scripts
+│   ├── consolidate_runs.py    # Consolidates experiment results
+│   └── performance_analysis.py # Generates performance visualizations
+├── src/               # Source code
+│   ├── data/          # Data processing scripts
+│   ├── models/        # Model training code
+│   └── evaluation/    # Evaluation scripts
+├── process.sh         # Results processing script
+├── run.sh            # Experiment runner script
 ├── requirements.txt   # Python dependencies
 └── README.md         # This file
 ```
@@ -30,26 +37,87 @@ source venv/bin/activate  # On Linux/Mac
 pip install -r requirements.txt
 ```
 
-## Tasks
+## Running Experiments
 
-1. Baseline Evaluation
-   - Model setup and inference
-   - Dataset preparation
-   - Performance measurement
+### 1. Execute Training Pipeline
+Use `run.sh` to execute the complete experiment pipeline:
+```bash
+./run.sh
+```
 
-2. Fine-tuning and Improved Evaluation
-   - Parameter-efficient fine-tuning (LoRA)
-   - Results comparison
-   - Performance analysis
+This script will:
+- Download required datasets and models
+- Run baseline evaluations
+- Fine-tune models with specified configurations
+- Generate initial performance visualizations
 
-## Datasets Options
+### 2. Process Results
+After experiments complete, use `process.sh` to analyze results:
+```bash
+./process.sh
+```
 
-- Classification: IMDB (50K movie reviews) or AG News (127.6K news articles)
-- Language Modeling: WikiText-2 (under 1M tokens)
-- Summarization: SAMSum or CNN/DailyMail subset
+This will:
+- Consolidate results from multiple runs
+- Generate comprehensive performance visualizations
+- Create summary statistics and reports
 
-## Evaluation Metrics
+## Key Scripts
 
-- Classification: Accuracy, F1-score
-- Language Modeling: Perplexity
-- Summarization: ROUGE scores
+### consolidate_runs.py
+Consolidates and analyzes experimental results:
+```bash
+python scripts/consolidate_runs.py results/gpt2-small
+```
+
+Features:
+- Combines metrics from multiple training runs
+- Generates baseline performance comparisons
+- Creates training progression visualizations
+- Outputs standardized CSV files for further analysis
+
+### performance_analysis.py
+Generates detailed performance visualizations:
+```bash
+python scripts/performance_analysis.py results/gpt2-small
+```
+
+Features:
+- Training progression plots
+- Metric comparison visualizations
+- Summary statistics generation
+
+## Supported Tasks and Datasets
+
+### Classification
+- IMDB Movie Reviews (50K reviews)
+  - Binary sentiment classification
+  - Metrics: Accuracy, Precision, Recall, F1-score
+
+### Language Modeling
+- WikiText-2 (under 1M tokens)
+  - Next token prediction
+  - Metrics: Perplexity, Loss
+
+## Results
+
+Results are organized by model in the `results/` directory:
+```
+results/
+├── gpt2-small/
+│   ├── run_1/        # Individual run results
+│   ├── run_2/
+│   └── analysis/     # Consolidated analysis
+│       ├── training_progression.csv
+│       ├── baseline_performance.csv
+│       └── performance_summary.csv
+└── distilgpt2/
+    └── ...
+```
+
+Each run directory contains:
+- `metrics.json`: Training metrics per epoch
+- `test_metrics.json`: Baseline/test performance
+- `config.json`: Run configuration
+
+The `analysis/` directory contains consolidated results and visualizations.

@@ -7,14 +7,20 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 # Directory paths
-DATA_DIR = PROJECT_ROOT / 'data'
-MODELS_DIR = PROJECT_ROOT / 'models'
-RESULTS_DIR = PROJECT_ROOT / 'results'
-CONFIGS_DIR = PROJECT_ROOT / 'configs'
+DATA_DIR = PROJECT_ROOT / 'data'  # Raw and processed data
+MODELS_DIR = PROJECT_ROOT / 'models'  # Model checkpoints and configs
+OUTPUT_DIR = PROJECT_ROOT / 'output'  # All output files
+CONFIGS_DIR = PROJECT_ROOT / 'configs'  # Configuration files
+
+# Output subdirectories
+RESULTS_DIR = OUTPUT_DIR / 'results'  # Training and evaluation results
+ANALYSIS_DIR = OUTPUT_DIR / 'analysis'  # Analysis outputs and visualizations
+LOGS_DIR = OUTPUT_DIR / 'logs'  # Log files
 
 # Create directories if they don't exist
-for dir_path in [DATA_DIR, MODELS_DIR, RESULTS_DIR, CONFIGS_DIR]:
-    dir_path.mkdir(exist_ok=True)
+for dir_path in [DATA_DIR, MODELS_DIR, OUTPUT_DIR, CONFIGS_DIR, 
+                RESULTS_DIR, ANALYSIS_DIR, LOGS_DIR]:
+    dir_path.mkdir(parents=True, exist_ok=True)
 
 # Model configurations
 MODEL_CONFIGS = {

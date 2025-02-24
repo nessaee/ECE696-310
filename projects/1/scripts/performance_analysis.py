@@ -219,7 +219,7 @@ def main():
     
     # Create detailed analysis directory
     detailed_analysis_dir = analysis_dir / 'detailed_analysis'
-    detailed_analysis_dir.mkdir(exist_ok=True)
+    # Analysis directory is created by config.py
     
     # Process each dataset
     for dataset in training_df['dataset'].unique():
@@ -274,7 +274,7 @@ def main():
     
     # Create detailed analysis directory
     detailed_analysis_dir = analysis_dir / 'detailed_analysis'
-    detailed_analysis_dir.mkdir(exist_ok=True)
+    # Analysis directory is created by config.py
     
     # Filter out datasets with NaN values
     valid_datasets = [dataset for dataset in training_df['dataset'].unique() 

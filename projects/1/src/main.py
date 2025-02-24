@@ -217,14 +217,14 @@ def download_model(args):
         raise
 
 def main():
+    # Set tokenizer parallelism if not already set
+    if 'TOKENIZERS_PARALLELISM' not in os.environ:
+        os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+    
     # Get results directory from environment or use default
     results_dir = os.environ.get('RESULTS_DIR', 'results')
     
-    # Create results directory
-    Path(results_dir).mkdir(parents=True, exist_ok=True)
-    
-    # Create logs directory for script output
-    Path('logs').mkdir(parents=True, exist_ok=True)
+    # Directories are created by config.py
     
     parser = argparse.ArgumentParser(description='LLM Fine-tuning Project')
     parser.add_argument('--mode', choices=['evaluate', 'train', 'download'], required=True,
