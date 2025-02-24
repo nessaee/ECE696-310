@@ -71,12 +71,14 @@ def create_performance_visualization(training_df: pd.DataFrame,
         training_df: Processed training data
         baseline_df: Baseline performance data
         dataset: Name of the dataset to visualize
+        output_dir: Directory to save the output files
     """
     # Filter data for the specified dataset
     dataset_training = training_df[training_df['dataset'] == dataset]
     dataset_baseline = baseline_df[baseline_df['dataset'] == dataset]
     
     # Set up the plot style with modern aesthetics
+    plt.style.use('seaborn-v0_8-whitegrid')
     plt.rcParams.update({
         'figure.facecolor': 'white',
         'axes.facecolor': 'white',
@@ -86,30 +88,36 @@ def create_performance_visualization(training_df: pd.DataFrame,
         'axes.spines.right': False
     })
     
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12))
-    
     # Colors for different metrics
     colors = ['#2563eb', '#16a34a', '#dc2626', '#9333ea']
     metrics = ['accuracy', 'precision', 'recall', 'f1']
     
-    # Plot 1: Line plot for training progression
+    # Create training progression plot
+    plt.figure(figsize=(10, 6))
     for metric, color in zip(metrics, colors):
         # Add baseline as horizontal line
         baseline_value = dataset_baseline[metric].values[0]
-        ax1.axhline(y=baseline_value, color=color, linestyle='--', alpha=0.5,
+        plt.axhline(y=baseline_value, color=color, linestyle='--', alpha=0.5,
                     label=f'Baseline {metric}')
         
         # Add training progression
-        ax1.plot(dataset_training['epoch'], dataset_training[metric],
+        plt.plot(dataset_training['epoch'], dataset_training[metric],
                 marker='o', color=color, label=f'Training {metric}')
     
-    ax1.set_title(f'Model Performance Progression - {dataset}')
-    ax1.set_xlabel('Epoch')
-    ax1.set_ylabel('Metric Value')
-    ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax1.grid(True, alpha=0.3)
+    plt.title(f'Training Progression - {dataset}')
+    plt.xlabel('Epoch')
+    plt.ylabel('Metric Value')
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(True, alpha=0.3)
     
-    # Plot 2: Bar plot comparison
+    # Save training progression plot
+    progression_path = output_dir / f'training_progression_{dataset}.png'
+    plt.savefig(progression_path, bbox_inches='tight', dpi=300)
+    print(f"Saved training progression plot to {progression_path}")
+    plt.close()
+    
+    # Create metrics comparison plot
+    plt.figure(figsize=(10, 6))
     bar_width = 0.15
     epochs = dataset_training['epoch'].unique()
     n_groups = len(epochs) + 1  # +1 for baseline
@@ -119,7 +127,7 @@ def create_performance_visualization(training_df: pd.DataFrame,
     
     for i, metric in enumerate(metrics):
         # Baseline bar (first group)
-        ax2.bar(x[0] + i*bar_width - (len(metrics)-1)*bar_width/2,
+        plt.bar(x[0] + i*bar_width - (len(metrics)-1)*bar_width/2,
                 dataset_baseline[metric].values[0],
                 bar_width, label=metric.capitalize(),
                 color=colors[i], alpha=0.8)
@@ -127,21 +135,20 @@ def create_performance_visualization(training_df: pd.DataFrame,
         # Training bars for each epoch
         for j, epoch in enumerate(epochs, start=1):
             epoch_data = dataset_training[dataset_training['epoch'] == epoch]
-            ax2.bar(x[j] + i*bar_width - (len(metrics)-1)*bar_width/2,
+            plt.bar(x[j] + i*bar_width - (len(metrics)-1)*bar_width/2,
                     epoch_data[metric].values[0],
                     bar_width, color=colors[i])
     
-    ax2.set_title(f'Performance Metrics Comparison - {dataset}')
-    ax2.set_ylabel('Metric Value')
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(['Baseline'] + [f'Epoch {e}' for e in epochs])
-    ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax2.grid(True, alpha=0.3)
+    plt.title(f'Metrics Comparison - {dataset}')
+    plt.ylabel('Metric Value')
+    plt.xticks(x, ['Baseline'] + [f'Epoch {e}' for e in epochs])
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(True, alpha=0.3)
     
-    plt.tight_layout()
-    output_path = output_dir / f'performance_comparison_{dataset}.png'
-    plt.savefig(output_path, bbox_inches='tight', dpi=300)
-    print(f"Saved performance visualization to {output_path}")
+    # Save metrics comparison plot
+    comparison_path = output_dir / f'metrics_comparison_{dataset}.png'
+    plt.savefig(comparison_path, bbox_inches='tight', dpi=300)
+    print(f"Saved metrics comparison plot to {comparison_path}")
     plt.close()
 
 def create_performance_table(training_df: pd.DataFrame,
