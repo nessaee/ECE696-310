@@ -27,7 +27,7 @@ usage() {
     echo "  --eval-steps STEPS         Steps between evaluations (default: 1)"
     echo "  --save-steps STEPS         Steps between model saves (default: 1)"
     echo "  --output-dir DIR           Directory to save model (default: models)"
-    echo "  --use-wandb                Enable Weights & Biases logging"
+
     echo "  --help                     Show this help message"
     exit 1
 }
@@ -36,8 +36,8 @@ usage() {
 EPOCHS=3
 EVAL_STEPS=1
 SAVE_STEPS=1
-OUTPUT_DIR="models"
-USE_WANDB=""
+OUTPUT_DIR="results"
+
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -74,10 +74,7 @@ while [[ $# -gt 0 ]]; do
             OUTPUT_DIR=$2
             shift 2
             ;;
-        --use-wandb)
-            USE_WANDB="--use_wandb"
-            shift
-            ;;
+
         --help)
             usage
             ;;
@@ -101,9 +98,36 @@ mkdir -p "$OUTPUT_DIR"
 source venv/bin/activate
 export PYTHONPATH="$PWD:$PYTHONPATH"
 
+# Set experiment name
+EXPERIMENT_NAME="train_${MODEL}_${DATASET}"
+
 # Build command
 CMD="python src/main.py --mode train --model $MODEL --dataset $DATASET"
 CMD="$CMD --num_epochs $EPOCHS --eval_steps $EVAL_STEPS --save_steps $SAVE_STEPS"
+
+# Get next run number using Python utility
+RUN_NUM=$(python -c "from pathlib import Path; from src.utils.run_utils import get_next_run_number; print(get_next_run_number(Path('${OUTPUT_DIR}/${MODEL}')))")
+
+# Setup output directory structure
+BASE_DIR="${OUTPUT_DIR}/${MODEL}/run_${RUN_NUM}"
+OUTPUT_DIR="${BASE_DIR}/train"
+
+# Create all required directories
+mkdir -p "${OUTPUT_DIR}/metrics"
+mkdir -p "${OUTPUT_DIR}/analysis"
+mkdir -p "${OUTPUT_DIR}/weights"
+
+# Save current run number for baseline evaluation
+mkdir -p "${BASE_DIR}"
+echo "$RUN_NUM" > "${BASE_DIR}/.current_run"
+
+# Add experiment name and set output dir
+CMD="$CMD --experiment-name $EXPERIMENT_NAME"
+export RESULTS_DIR="$OUTPUT_DIR"
+
+echo "Output dir: $OUTPUT_DIR"
+echo "Command: $CMD"
+
 
 # Add optional arguments if provided
 if [ ! -z "$LEARNING_RATE" ]; then
@@ -114,9 +138,7 @@ if [ ! -z "$BATCH_SIZE" ]; then
     CMD="$CMD --batch_size $BATCH_SIZE"
 fi
 
-if [ ! -z "$USE_WANDB" ]; then
-    CMD="$CMD $USE_WANDB"
-fi
+
 
 # Run fine-tuning
 log "Starting fine-tuning for model: $MODEL on dataset: $DATASET"

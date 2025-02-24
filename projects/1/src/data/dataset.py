@@ -91,6 +91,30 @@ class DatasetHandler:
         model_inputs['labels'] = labels['input_ids']
         return model_inputs
     
+    def decode_batch(self, input_ids) -> list:
+        """Decode a batch of input IDs back to text.
+        
+        Args:
+            input_ids: Tensor of input IDs from the tokenizer
+            
+        Returns:
+            List of decoded text strings
+        """
+        # Convert to list if tensor
+        if hasattr(input_ids, 'cpu'):
+            input_ids = input_ids.cpu().tolist()
+            
+        # Decode each sequence, skipping special tokens
+        decoded = []
+        for seq in input_ids:
+            # Skip padding tokens
+            if isinstance(seq, list):
+                seq = [id for id in seq if id != self.tokenizer.pad_token_id]
+            text = self.tokenizer.decode(seq, skip_special_tokens=True)
+            decoded.append(text)
+            
+        return decoded
+    
     def get_dataloader(self, split: str = 'train', shuffle: bool = True) -> DataLoader:
         """
         Get dataloader for specified split.

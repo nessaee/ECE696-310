@@ -8,7 +8,6 @@ pandas>=2.0.0
 rouge-score>=0.1.2
 accelerate>=0.20.0
 peft>=0.4.0  # For parameter efficient fine-tuning (LoRA)
-wandb>=0.15.0  # For experiment tracking
 tqdm>=4.65.0
 matplotlib>=3.7.0  # For visualization
 seaborn>=0.12.0  # For enhanced visualization

@@ -2,6 +2,7 @@
 Main script for running experiments.
 """
 import argparse
+import os
 from pathlib import Path
 import json
 import time
@@ -12,8 +13,9 @@ from src.models.model_handler import ModelHandler
 from src.data.dataset import DatasetHandler
 from src.evaluation.evaluator import Evaluator
 from src.training.trainer import Trainer
-from src.utils.config import MODEL_CONFIGS, DATASET_CONFIGS
+from src.utils.config import MODEL_CONFIGS, DATASET_CONFIGS, RESULTS_DIR
 from src.utils.logging_config import setup_logging
+from src.utils.metrics_tracker import MetricsTracker
 
 def save_results_to_csv(results: dict, filepath: Path, metadata: dict = None):
     """Save results dictionary to CSV format with optional metadata."""
@@ -39,8 +41,19 @@ def save_results_to_csv(results: dict, filepath: Path, metadata: dict = None):
 
 def run_baseline_evaluation(args):
     """Run baseline model evaluation with logging."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    experiment_name = f"baseline_eval_{args.model}_{args.dataset}_{timestamp}"
+    # Initialize handlers
+    model_handler = ModelHandler(args.model, args.dataset)
+    dataset_handler = DatasetHandler(args.dataset, model_handler.tokenizer)
+    
+    # Use model name from config to ensure consistency
+    model_name = model_handler.model_config['name']
+    
+    # Use provided experiment name or generate one
+    if args.experiment_name:
+        experiment_name = args.experiment_name
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        experiment_name = f"baseline_eval_{model_name}_{args.dataset}_{timestamp}"
     
     logger = setup_logging(experiment_name)
     logger.info(f"Starting baseline evaluation for model={args.model}, dataset={args.dataset}")
@@ -49,14 +62,14 @@ def run_baseline_evaluation(args):
         # Initialize handlers
         model_handler = ModelHandler(args.model, args.dataset)
         dataset_handler = DatasetHandler(args.dataset, model_handler.tokenizer)
-        evaluator = Evaluator(model_handler, dataset_handler)
+        evaluator = Evaluator(model_handler, dataset_handler, is_baseline=True)
         
         # Run evaluation
         results = evaluator.evaluate('test')
         
         # Add metadata
         metadata = {
-            'timestamp': timestamp,
+            'timestamp': datetime.now().strftime('%Y%m%d_%H%M%S'),
             'model': args.model,
             'dataset': args.dataset,
             'split': 'test'
@@ -84,8 +97,12 @@ def run_baseline_evaluation(args):
 
 def run_training(args):
     """Run model fine-tuning with enhanced logging and checkpointing."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    experiment_name = f"train_{args.model}_{args.dataset}_{timestamp}"
+    # Use provided experiment name or generate one with timestamp
+    if args.experiment_name:
+        experiment_name = args.experiment_name
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        experiment_name = f"train_{args.model}_{args.dataset}_{timestamp}"
     
     logger = setup_logging(experiment_name)
     logger.info(f"Starting training experiment: {experiment_name}")
@@ -95,15 +112,24 @@ def run_training(args):
         # Initialize handlers
         model_handler = ModelHandler(args.model, args.dataset)
         dataset_handler = DatasetHandler(args.dataset, model_handler.tokenizer)
-        evaluator = Evaluator(model_handler, dataset_handler)
         
         # Initialize trainer with experiment name
         trainer = Trainer(
             model_handler,
             dataset_handler,
-            evaluator,
-            use_wandb=args.use_wandb,
             experiment_name=experiment_name
+        )
+        
+        # Initialize evaluator with metrics tracker
+        evaluator = Evaluator(
+            model_handler, 
+            dataset_handler, 
+            is_baseline=False,
+            metrics_tracker=MetricsTracker(
+                experiment_name='test',
+                output_dir=trainer.base_dir,  # Use same base dir as trainer
+                model_name=model_handler.model_config['name']
+            )
         )
         
         # Run training
@@ -116,14 +142,13 @@ def run_training(args):
         
         # Add metadata
         metadata = {
-            'timestamp': timestamp,
+            'timestamp': datetime.now().strftime('%Y%m%d_%H%M%S'),
             'model': args.model,
             'dataset': args.dataset,
             'num_epochs': args.num_epochs,
             'learning_rate': args.learning_rate,
             'eval_steps': args.eval_steps,
-            'save_steps': args.save_steps,
-            'use_wandb': args.use_wandb
+            'save_steps': args.save_steps
         }
         
         # Save final results
@@ -192,9 +217,14 @@ def download_model(args):
         raise
 
 def main():
-    # Create results and logs directories
-    for dir_name in ['results', 'logs', 'models']:
-        Path(dir_name).mkdir(exist_ok=True)
+    # Get results directory from environment or use default
+    results_dir = os.environ.get('RESULTS_DIR', 'results')
+    
+    # Create results directory
+    Path(results_dir).mkdir(parents=True, exist_ok=True)
+    
+    # Create logs directory for script output
+    Path('logs').mkdir(parents=True, exist_ok=True)
     
     parser = argparse.ArgumentParser(description='LLM Fine-tuning Project')
     parser.add_argument('--mode', choices=['evaluate', 'train', 'download'], required=True,
@@ -215,8 +245,11 @@ def main():
                       help='Number of steps between evaluations')
     parser.add_argument('--save_steps', type=int, default=1,
                       help='Number of steps between model saves')
-    parser.add_argument('--use_wandb', action='store_true',
-                      help='Use Weights & Biases for tracking')
+
+    parser.add_argument('--is-baseline', action='store_true',
+                      help='Whether this is a baseline evaluation')
+    parser.add_argument('--experiment-name', type=str,
+                      help='Name of the experiment')
     
     args = parser.parse_args()
     

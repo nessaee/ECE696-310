@@ -4,11 +4,13 @@ Model evaluation module.
 from typing import Dict, Any, Optional
 import torch
 import json
+import os
 from pathlib import Path
 from tqdm import tqdm
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, classification_report
 import math
+from datetime import datetime
 
 from src.models.model_handler import ModelHandler
 from src.data.dataset import DatasetHandler
@@ -18,7 +20,7 @@ from src.utils.metrics_tracker import MetricsTracker
 class Evaluator:
     """Handles model evaluation for different tasks."""
     
-    def __init__(self, model_handler: ModelHandler, dataset_handler: DatasetHandler, metrics_tracker: Optional[MetricsTracker] = None):
+    def __init__(self, model_handler: ModelHandler, dataset_handler: DatasetHandler, metrics_tracker: Optional[MetricsTracker] = None, is_baseline: bool = False):
         """
         Initialize evaluator.
         
@@ -26,12 +28,55 @@ class Evaluator:
             model_handler: Initialized ModelHandler instance
             dataset_handler: Initialized DatasetHandler instance
             metrics_tracker: Optional MetricsTracker instance for logging metrics
+            is_baseline: Whether this is baseline evaluation
         """
         self.model_handler = model_handler
         self.dataset_handler = dataset_handler
         self.device = model_handler.device
         self.task = dataset_handler.config['task']
         self.metrics_tracker = metrics_tracker
+        
+        # Get model name and setup directories
+        self.model_name = model_handler.model_config['name']
+        
+        # Get output directory from environment or use default
+        output_dir = os.environ.get('RESULTS_DIR', RESULTS_DIR)
+        
+        # Determine evaluation type
+        eval_type = 'baseline_eval' if is_baseline else 'test'
+        
+        # Initialize metrics tracker with model-based directory structure
+        if metrics_tracker:
+            self.metrics_tracker = metrics_tracker
+            self.base_dir = metrics_tracker.output_dir
+        else:
+            # Use provided output directory directly
+            self.base_dir = Path(output_dir)
+            
+            # Ensure parent directories exist
+            self.base_dir.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Create base directory
+            self.base_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Setup directories
+        self.metrics_dir = self.base_dir / 'metrics'
+        self.analysis_dir = self.base_dir / 'analysis'
+        
+        # Create directories
+        for dir_path in [self.metrics_dir, self.analysis_dir]:
+            dir_path.mkdir(parents=True, exist_ok=True)
+        
+        # Save evaluation config
+        config = {
+            'model_name': self.model_name,
+            'dataset': dataset_handler.config['name'],
+            'evaluation_type': eval_type,
+            'timestamp': datetime.now().strftime('%Y%m%d_%H%M%S')
+        }
+        config_path = self.analysis_dir / 'config.json'
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=4)
     
     def evaluate_classification(self, split: str = 'test') -> Dict[str, Any]:
         """Evaluate classification performance."""
@@ -151,12 +196,23 @@ class Evaluator:
         else:
             results = self.evaluate_summarization(split)
         
-        # Save results
-        model_name = self.model_handler.model_config['name']
-        dataset_name = self.dataset_handler.config['name']
-        results_file = RESULTS_DIR / f'evaluation_{model_name}_{dataset_name}_{split}.json'
-        
-        with open(results_file, 'w') as f:
+        # Save metrics
+        metrics_file = self.metrics_dir / f'{split}_metrics.json'
+        with open(metrics_file, 'w') as f:
             json.dump(results, f, indent=4)
+            
+        # Save analysis report
+        report_path = self.analysis_dir / f'{split}_report.txt'
+        with open(report_path, 'w') as f:
+            f.write(f"Evaluation Report for {split} split\n")
+            f.write(f"Model: {self.model_handler.model_config['name']}\n")
+            f.write(f"Dataset: {self.dataset_handler.config['name']}\n")
+            f.write(f"Task: {self.task}\n\n")
+            f.write(f"Metrics:\n")
+            for metric, value in results.items():
+                if isinstance(value, (int, float)):
+                    f.write(f"{metric}: {value:.4f}\n")
+                else:
+                    f.write(f"{metric}:\n{value}\n")
         
         return results

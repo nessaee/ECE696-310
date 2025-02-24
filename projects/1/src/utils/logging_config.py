@@ -6,20 +6,23 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-def setup_logging(experiment_name: str = None) -> logging.Logger:
+def setup_logging(experiment_name: str = None, log_dir: Path = None) -> logging.Logger:
     """
     Set up logging configuration for the project.
     
     Args:
         experiment_name (str, optional): Name of the experiment for log file naming.
             If None, uses timestamp.
+        log_dir (Path, optional): Directory to store log files.
+            If None, uses default 'logs' directory.
             
     Returns:
         logging.Logger: Configured logger instance
     """
     # Create logs directory if it doesn't exist
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
+    if log_dir is None:
+        log_dir = Path("logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
     
     # Generate log filename
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
