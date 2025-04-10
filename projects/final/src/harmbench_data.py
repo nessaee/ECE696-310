@@ -37,6 +37,7 @@ class BehaviorEntry:
     tactic: str
     time_spent: int
     submission_message: str
+    system_prompt: Optional[str] = None
     messages: List[MessageEntry] = field(default_factory=list)
     sequence_length: int = 0
 
@@ -109,12 +110,20 @@ class HarmBenchDataset:
                 question_id = row[question_id_idx]
                 temperature = float(row[temp_idx])
                 
-                # Create message entries
+                # Create message entries and extract system prompt (message_0)
                 messages = []
+                system_prompt = None
+                
                 for idx, msg_num in message_indices.items():
                     if idx < len(row) and row[idx]:
-                        messages.append(MessageEntry.from_json_str(row[idx]))
-                    else:
+                        # If this is message_0, store as system prompt
+                        if msg_num == 0:
+                            msg_entry = MessageEntry.from_json_str(row[idx])
+                            if msg_entry.role and msg_entry.body:
+                                system_prompt = msg_entry.body
+                        else:
+                            messages.append(MessageEntry.from_json_str(row[idx]))
+                    elif msg_num != 0:  # Skip empty message_0
                         messages.append(MessageEntry(role='', body=''))
                 
                 # Create behavior entry
@@ -124,6 +133,7 @@ class HarmBenchDataset:
                     tactic=row[tactic_idx],
                     time_spent=int(row[time_spent_idx]) if row[time_spent_idx].isdigit() else 0,
                     submission_message=row[submission_msg_idx],
+                    system_prompt=system_prompt,
                     messages=messages
                 )
                 
